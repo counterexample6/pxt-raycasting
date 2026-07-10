@@ -16,6 +16,8 @@ based on mmoskal's [3d map](https://forum.makecode.com/t/3d-raycasting-in-arcade
 * Switch view mode with block "setViewMode to tilemap(2D)/raycasting(3D)"
 * Zoom in/out by set fov
 * Raycasting view projects floor tiles by default. Use "set floor rendering" to turn it off when a project needs the previous background-only floor or better performance.
+* Ceiling rendering is disabled by default. Use "set ceiling rendering" to project tile textures above the horizon; use "set ceiling height" and "set wall height" to configure each plane independently in tile units.
+* Use "set ceiling tilemap" with a same-sized second Tilemap to paint ceiling materials independently. Empty ceiling cells show the scene background as sky by default; enable "set empty ceiling tiles use floor tiles" to reuse world Tilemap textures instead.
 
 ## Features:
 * Switch Tilemap(original 2D)/Raycasting(3D by default) view mode with provided "set mode" block
@@ -33,7 +35,7 @@ based on mmoskal's [3d map](https://forum.makecode.com/t/3d-raycasting-in-arcade
 * Porvide a block for set directional animations of sprite, with the Arcade out-of-box animation editor. Max 4 directions by now, but can be any count, let me know if you need more.
 * Porvide a event handler block running codes when direction between myself and sprite changed, can work together with out-of-box Animation blocks and richard Character Animation extension.
 * FOV(field of view), zoom in/out, by change "fov" property value
-* Projected floor tiles reuse the image at each tilemap location. Floor rendering applies only in raycasting view; ceiling texturing is not included.
+* Projected floors reuse the image at each world Tilemap location. Ceilings can use an optional same-sized ceiling Tilemap with its own tileset for per-cell material overrides. Unassigned ceiling cells are transparent by default, or can be configured to reuse the world Tilemap texture.
 * Mimimap, removed, cause we have real-size and real-time tilemap already. Let me know if you need.
 * The offsetZ for sprite, for floating effect, only worked when rendering in 3D view, so collisions could happen even they are far away at Z axis in 3D view
 * Porvide jump/move with height&duration parameters for sprites, calculate velocity and acceleration value auto.
@@ -75,7 +77,7 @@ To edit this repository in MakeCode.
 
 ## Development notes
 
-* [`render_raycasting.ts`](render_raycasting.ts) contains the active renderer: FP8 projection math, tilemap integration, wall and floor rendering, and sprite projection.
+* [`render_raycasting.ts`](render_raycasting.ts) contains the active renderer: FP8 projection math, tilemap integration, configurable wall and ceiling heights, wall/floor/ceiling rendering, and sprite projection.
 * [`render_blocks.ts`](render_blocks.ts) is the public Blocks and TypeScript API layer. Preserve its `blockId` values, help links, and the `Render` namespace for compatibility.
 * [`animation.ts`](animation.ts) provides the animation fixture used by the local test project. The PXT compiler concatenates source files in the order listed in [`pxt.json`](pxt.json), so update that order deliberately when adding a source module.
 * Run `pxt build --local` after code changes. For interactive checks, use the VS Code MakeCode extension’s **Start MakeCode Simulator** action and compare raycasting and tilemap modes.

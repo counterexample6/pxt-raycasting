@@ -177,6 +177,136 @@ namespace Render {
     }
 
     /**
+     * Enable or disable projected ceiling-tile rendering in raycasting view.
+     * @param enabled whether ceiling tiles should be rendered
+     */
+    //% blockId=rcRender_setCeilingRenderingEnabled block="set ceiling rendering $enabled"
+    //% group="Basic"
+    //% weight=78
+    //% help=github:pxt-raycasting/docs/set-ceiling-rendering-enabled
+    export function setCeilingRenderingEnabled(enabled: boolean) {
+        raycastingRender.ceilingRenderingEnabled = enabled
+    }
+
+    /**
+     * Check whether projected ceiling tiles are rendered in raycasting view.
+     */
+    //% blockId=rcRender_isCeilingRenderingEnabled block="ceiling rendering enabled"
+    //% group="Basic"
+    //% weight=77
+    //% help=github:pxt-raycasting/docs/set-ceiling-rendering-enabled
+    export function isCeilingRenderingEnabled(): boolean {
+        return raycastingRender.ceilingRenderingEnabled
+    }
+
+    /**
+     * Set the horizontal ceiling plane height above the floor in tile units.
+     * @param height ceiling height in tiles
+     */
+    //% blockId=rcRender_setCeilingHeight block="set ceiling height $height tiles"
+    //% group="Basic"
+    //% weight=76
+    //% height.min=0 height.max=10 height.defl=1
+    //% help=github:pxt-raycasting/docs/set-ceiling-height
+    export function setCeilingHeight(height: number) {
+        raycastingRender.ceilingHeight = Math.max(0, height)
+    }
+
+    /**
+     * Get the horizontal ceiling plane height above the floor in tile units.
+     */
+    //% blockId=rcRender_getCeilingHeight block="ceiling height in tiles"
+    //% group="Basic"
+    //% weight=75
+    //% help=github:pxt-raycasting/docs/set-ceiling-height
+    export function getCeilingHeight(): number {
+        return raycastingRender.ceilingHeight
+    }
+
+    /**
+     * Set wall height as a tile multiplier. This is equivalent to wallZScale.
+     * @param height wall height in tiles
+     */
+    //% blockId=rcRender_setWallHeight block="set wall height $height tiles"
+    //% group="Basic"
+    //% weight=74
+    //% height.min=0 height.max=10 height.defl=1
+    //% help=github:pxt-raycasting/docs/set-wall-height
+    export function setWallHeight(height: number) {
+        raycastingRender.wallHeight = Math.max(0, height)
+    }
+
+    /**
+     * Get wall height as a tile multiplier.
+     */
+    //% blockId=rcRender_getWallHeight block="wall height in tiles"
+    //% group="Basic"
+    //% weight=73
+    //% help=github:pxt-raycasting/docs/set-wall-height
+    export function getWallHeight(): number {
+        return raycastingRender.wallHeight
+    }
+
+    /**
+     * Use a same-sized Tilemap as the per-cell material layer for rendered ceilings.
+     * Empty layer cells continue to use the world tile's texture.
+     * @param ceilingTilemap the Tilemap layer that supplies ceiling materials
+     */
+    //% blockId=rcRender_setCeilingTilemap block="set ceiling tilemap $ceilingTilemap"
+    //% group="Basic"
+    //% weight=72
+    //% ceilingTilemap.shadow=tilemap
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function setCeilingTilemap(ceilingTilemap: tiles.TileMapData) {
+        raycastingRender.setCeilingTilemap(ceilingTilemap)
+    }
+
+    /**
+     * Clear the ceiling material layer and reuse world tile textures for ceilings.
+     */
+    //% blockId=rcRender_clearCeilingTilemap block="clear ceiling tilemap"
+    //% group="Basic"
+    //% weight=71
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function clearCeilingTilemap() {
+        raycastingRender.clearCeilingTilemap()
+    }
+
+    /**
+     * Check whether a compatible ceiling material layer is active.
+     */
+    //% blockId=rcRender_hasCeilingTilemap block="has ceiling tilemap"
+    //% group="Basic"
+    //% weight=70
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function hasCeilingTilemap(): boolean {
+        return raycastingRender.hasCeilingTilemap()
+    }
+
+    /**
+     * Choose whether unassigned ceiling cells reuse the corresponding world tile texture.
+     * @param enabled true to use floor tiles; false to leave the sky/background visible
+     */
+    //% blockId=rcRender_setCeilingUsesFloorTiles block="set empty ceiling tiles use floor tiles $enabled"
+    //% group="Basic"
+    //% weight=69
+    //% help=github:pxt-raycasting/docs/set-ceiling-uses-floor-tiles
+    export function setCeilingUsesFloorTiles(enabled: boolean) {
+        raycastingRender.ceilingUsesFloorTiles = enabled
+    }
+
+    /**
+     * Check whether unassigned ceiling cells reuse the world tile texture.
+     */
+    //% blockId=rcRender_isCeilingUsingFloorTiles block="empty ceiling tiles use floor tiles"
+    //% group="Basic"
+    //% weight=68
+    //% help=github:pxt-raycasting/docs/set-ceiling-uses-floor-tiles
+    export function isCeilingUsingFloorTiles(): boolean {
+        return raycastingRender.ceilingUsesFloorTiles
+    }
+
+    /**
      * Get render arribute
      * @param viewMode
      */
@@ -277,9 +407,7 @@ namespace Render {
     //% weight=86
     //% help=github:pxt-raytracing/docs/refresh-tilemap
     export function refreshTilemap(): void {
-        getRCRenderInstance().map = game.currentScene().tileMap.data
-        getRCRenderInstance().mapData = ((getRCRenderInstance().map as any).data as Buffer).toArray(NumberFormat.Int8LE)
-        getRCRenderInstance().textures = getRCRenderInstance().map.getTileset()
+        getRCRenderInstance().refreshTilemap()
     }
 
     /**

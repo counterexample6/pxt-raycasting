@@ -135,6 +135,19 @@ tiles.setCurrentTilemap(tm)
 /*
 */
 const tilemapScale = 1 << game.currentScene().tileMap.scale
+const ceilingTextures: Image[] = []
+for (let index = 0; index < 16; index++) {
+    const texture = image.create(tilemapScale, tilemapScale)
+    texture.fill((index + 3) % 15 + 1)
+    ceilingTextures.push(texture)
+}
+const ceilingTilemap = tiles.createTilemap(
+    ((tm as any).data as Buffer).slice(),
+    image.create(tm.width, tm.height),
+    ceilingTextures,
+    tm.scale)
+// Demonstrate that an empty overlay cell retains the world tile's texture.
+ceilingTilemap.setTile(8, 8, 0)
 rcRender.sprSelf.setPosition(8 * tilemapScale, 8 * tilemapScale)
 
 let count = 0
@@ -176,6 +189,9 @@ Render.setSpriteAttribute(sprSkelly, RCSpriteAttribute.ZOffset, 4)
 Render.setSpriteAttribute(sprPlane, RCSpriteAttribute.ZOffset, 16)
 Render.setSpriteAttribute(cake, RCSpriteAttribute.ZOffset, 4)
 Render.setSpriteAttribute(fish, RCSpriteAttribute.ZOffset, 8)
+
+
+
 // for(let i=0;i<10;i++){
 //     let spr=createSprite(4, 7, Math.randomRange(5,10), Math.randomRange(3,10), texturesCoin, SpriteKind.Food)
 //     tiles.placeOnRandomTile(spr, trans16)
@@ -263,7 +279,12 @@ controller.A.onEvent(ControllerButtonEvent.Released, () => {
     Render.moveWithController(1.5, 2)
 })
 
-rcRender.wallZScale = 2
+// Exercise configurable enclosed-room rendering in the local simulator.
+Render.setWallHeight(2)
+Render.setCeilingHeight(2)
+Render.setCeilingTilemap(ceilingTilemap)
+Render.setCeilingUsesFloorTiles(false)
+Render.setCeilingRenderingEnabled(true)
 
 let zOffset = 3// tilemapScale / 2
 rcRender.setZOffset(rcRender.sprSelf, zOffset, 0)
