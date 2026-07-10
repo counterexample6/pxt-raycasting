@@ -252,11 +252,9 @@ namespace Render {
      * Empty layer cells continue to use the world tile's texture.
      * @param ceilingTilemap the Tilemap layer that supplies ceiling materials
      */
-    //% blockId=rcRender_setCeilingTilemap block="set ceiling tilemap $ceilingTilemap"
-    //% group="Basic"
-    //% weight=72
-    //% ceilingTilemap.shadow=tilemap
-    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    // Temporarily TypeScript-only while isolating the MakeCode Blocks category issue.
+    // Restore the Block metadata with the Arcade `tiles_tilemap_editor` shadow
+    // after the category has been verified without this TileMapData input.
     export function setCeilingTilemap(ceilingTilemap: tiles.TileMapData) {
         raycastingRender.setCeilingTilemap(ceilingTilemap)
     }
