@@ -15,13 +15,13 @@ Render.setCeilingRenderingEnabled(true)
 * It only applies to `raycastingView`; normal tilemap mode is unchanged.
 * Unassigned ceiling cells leave the scene background visible. Assign materials with [set ceiling tilemap](/set-ceiling-tilemap), or use [set empty ceiling tiles use floor tiles](/set-ceiling-uses-floor-tiles) to reuse world tile textures.
 * If tilemap contents or tiles are changed at runtime, call [refresh Tilemap](/refresh-tilemap).
-* Use [set ceiling height](/set-ceiling-height) to position the ceiling plane.
+* Use [set wall and ceiling height](/set-wall-and-ceiling-height) to change the room height.
 ## ~
 
 ## Example
 
 ```blocks
-Render.setCeilingHeight(1)
+Render.setWallAndCeilingHeight(1)
 Render.setCeilingRenderingEnabled(true)
 Render.setViewMode(ViewMode.raycastingView)
 ```

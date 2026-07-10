@@ -16,7 +16,7 @@ based on mmoskal's [3d map](https://forum.makecode.com/t/3d-raycasting-in-arcade
 * Switch view mode with block "setViewMode to tilemap(2D)/raycasting(3D)"
 * Zoom in/out by set fov
 * Raycasting view projects floor tiles by default. Use "set floor rendering" to turn it off when a project needs the previous background-only floor or better performance.
-* Ceiling rendering is disabled by default. Use "set ceiling rendering" to project tile textures above the horizon; use "set ceiling height" and "set wall height" to configure each plane independently in tile units.
+* Floor rendering is enabled by default and ceiling rendering is disabled by default. Use "set ceiling rendering" to project tile textures above the horizon, and "set wall and ceiling height" to change the matching room height in tile units.
 * Use "set ceiling tilemap" with a same-sized second Tilemap to paint ceiling materials independently. Empty ceiling cells show the scene background as sky by default; enable "set empty ceiling tiles use floor tiles" to reuse world Tilemap textures instead.
 
 ## Features:

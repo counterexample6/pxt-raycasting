@@ -120,7 +120,7 @@ namespace Render {
         protected _wallZScale: number = 1
         protected _floorRenderingEnabled = true
         protected _ceilingRenderingEnabled = false
-        // Ceiling-plane height in tile units; separate from the wall multiplier.
+        // Ceiling-plane height is kept in sync with the wall-height multiplier.
         protected _ceilingHeight = 1
         // When false, unassigned ceiling material cells leave the sky/background visible.
         protected _ceilingUsesFloorTiles = false
@@ -240,16 +240,16 @@ namespace Render {
             return this._wallZScale
         }
         set wallZScale(v: number) {
-            this._wallZScale = v
+            this.setWallAndCeilingHeight(v)
         }
 
-        /** Wall height in tile units; an alias for the existing wall multiplier. */
+        /** Wall height is synchronized with the ceiling height. */
         get wallHeight(): number {
             return this._wallZScale
         }
 
         set wallHeight(height: number) {
-            this._wallZScale = height
+            this.setWallAndCeilingHeight(height)
         }
 
         get floorRenderingEnabled(): boolean {
@@ -268,13 +268,21 @@ namespace Render {
             this._ceilingRenderingEnabled = enabled
         }
 
-        /** Height of the horizontal ceiling plane in tile units above the floor. */
+        /** Ceiling height is synchronized with the wall height. */
         get ceilingHeight(): number {
             return this._ceilingHeight
         }
 
         set ceilingHeight(height: number) {
-            this._ceilingHeight = Math.max(0, height)
+            this.setWallAndCeilingHeight(height)
+        }
+
+        get wallAndCeilingHeight(): number {
+            return this._wallZScale
+        }
+
+        set wallAndCeilingHeight(height: number) {
+            this.setWallAndCeilingHeight(height)
         }
 
         get ceilingUsesFloorTiles(): boolean {
@@ -283,6 +291,13 @@ namespace Render {
 
         set ceilingUsesFloorTiles(enabled: boolean) {
             this._ceilingUsesFloorTiles = enabled
+        }
+
+        /** Keep wall projection and the ceiling plane at the same tile height. */
+        private setWallAndCeilingHeight(height: number) {
+            const sharedHeight = Math.max(0, height)
+            this._wallZScale = sharedHeight
+            this._ceilingHeight = sharedHeight
         }
 
         /** Assign a same-sized Tilemap layer whose tiles override ceiling materials. */

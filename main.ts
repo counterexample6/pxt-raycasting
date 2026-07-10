@@ -146,7 +146,7 @@ const ceilingTilemap = tiles.createTilemap(
     image.create(tm.width, tm.height),
     ceilingTextures,
     tm.scale)
-// Demonstrate that an empty overlay cell retains the world tile's texture.
+// Demonstrate that an empty overlay cell leaves the background visible as sky.
 ceilingTilemap.setTile(8, 8, 0)
 rcRender.sprSelf.setPosition(8 * tilemapScale, 8 * tilemapScale)
 
@@ -280,8 +280,7 @@ controller.A.onEvent(ControllerButtonEvent.Released, () => {
 })
 
 // Exercise configurable enclosed-room rendering in the local simulator.
-Render.setWallHeight(2)
-Render.setCeilingHeight(2)
+Render.setWallAndCeilingHeight(2)
 Render.setCeilingTilemap(ceilingTilemap)
 Render.setCeilingUsesFloorTiles(false)
 Render.setCeilingRenderingEnabled(true)

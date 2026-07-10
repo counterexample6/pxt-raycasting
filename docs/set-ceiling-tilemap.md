@@ -23,7 +23,7 @@ Render.setCeilingTilemap(tilemap`ceiling`)
 
 ```blocks
 Render.setCeilingTilemap(tilemap`ceiling`)
-Render.setCeilingHeight(1)
+Render.setWallAndCeilingHeight(1)
 Render.setCeilingRenderingEnabled(true)
 ```
 
