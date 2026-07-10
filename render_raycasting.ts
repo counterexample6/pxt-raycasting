@@ -1,6 +1,14 @@
 //% shim=pxt::updateScreen
 function updateScreen(img: Image) { }
 
+/**
+ * The active 2.5D renderer.
+ *
+ * World positions and direction vectors use FP8 fixed-point values while the
+ * tilemap stores one tile per integer world unit. Each raycasting frame draws
+ * the background, optional floor tiles, DDA wall columns, then scene sprites.
+ * `render_blocks.ts` exposes the supported public API for this implementation.
+ */
 enum ViewMode {
     //% block="TileMap Mode"
     tilemapView,
@@ -11,15 +19,19 @@ enum ViewMode {
 namespace Render {
     const SH = screen.height, SHHalf = SH / 2
     const SW = screen.width, SWHalf = SW / 2
+    // FP8 world/vector scale. Keep all projection calculations in this unit
+    // until the final image-coordinate conversion.
     export const fpx = 8
     const fpx2=fpx*2
     const fpx2_4 = fpx2 - 4
     const fpx_scale = 2 ** fpx
     export function tofpx(n: number) { return (n * fpx_scale) | 0 }
+    // Fixed-point representations of 1.0 and 1.0 squared for DDA math.
     const one = 1 << fpx
     const one2 = 1 << (fpx + fpx)
     const FPX_MAX = (1 << fpx) - 1
 
+    /** Per-sprite vertical state. Values are FP8 pixels and keyed by sprite ID. */
     class MotionSet1D {
         p: number
         v: number = 0
@@ -29,13 +41,16 @@ namespace Render {
         }
     }
 
-    export const defaultFov = SW / SH / 2  //Wall just fill screen height when standing 1 tile away
+    // A one-tile-high wall fills the viewport when viewed one tile away.
+    export const defaultFov = SW / SH / 2
 
     export class RayCastingRender{
 
+        // Off-screen 3D frame buffer; copied to the hardware screen each frame.
         private tempScreen: Image = image.create(SW, SH)
         private tempBackground: scene.BackgroundLayer //for "see through" when scene popped out
 
+        // Camera orientation and projection-plane vectors in FP8.
         velocityAngle: number = 2
         velocity: number = 3
         protected _viewMode=ViewMode.raycastingView
@@ -52,7 +67,7 @@ namespace Render {
         protected cameraOffsetX = 0
         protected cameraOffsetZ_fpx = 0
 
-        //sprites & accessories
+        // Scene sprites taken over by the 3D renderer and their attached state.
         sprSelf: Sprite
         sprites: Sprite[] = []
         sprites2D: Sprite[] = []
@@ -63,7 +78,7 @@ namespace Render {
         protected sayRederers: sprites.BaseSpriteSayRenderer[] = []
         protected sayEndTimes: number[] = []
 
-        //reference
+        // Cached tilemap data and tileset images used by wall and floor sampling.
         protected tilemapScaleSize = 1 << TileScale.Sixteen
         map: tiles.TileMapData
         mapData:Array<number>
@@ -72,18 +87,18 @@ namespace Render {
         protected oldRender: scene.Renderable
         protected myRender: scene.Renderable
 
-        //render
+        // Per-frame projection state. `dist` stores wall depth by screen column
+        // so sprite drawing can correctly reject columns behind a wall.
         protected wallHeightInView: number
         protected wallWidthInView: number
         protected dist: number[] = []
-        //render perf const
         cameraRangeAngle:number
         viewZPos:number
         selfXFpx:number
         selfYFpx:number
 
-        //for drawing sprites
-        protected invDet: number //required for correct matrix multiplication
+        // Reused scratch state for sprite-to-camera transforms and overlays.
+        protected invDet: number
         camera: scene.Camera
         tempSprite: Sprite = sprites.create(img`0`)
         protected transformX: number[] = []
@@ -198,7 +213,7 @@ namespace Render {
             return this.getMotionZ(spr).p / fpx_scale
         }
 
-        //todo, use ZHeight(set from sprite.Height when takeover, then sprite.Height will be replace with width)
+        // Sprite image height represents its vertical size in the 2.5D view.
         isOverlapZ(sprite1: Sprite, sprite2: Sprite): boolean {
             const p1 = this.getMotionZPosition(sprite1)
             const p2 = this.getMotionZPosition(sprite2)
@@ -301,6 +316,7 @@ namespace Render {
         }
 
         tilemapLoaded() {
+            // Cache raw tile IDs and tileset images once per loaded tilemap.
             const sc = game.currentScene()
             this.map = sc.tileMap.data
             this.mapData = ((this.map as any).data as Buffer).toArray(NumberFormat.Int8LE)
@@ -426,7 +442,7 @@ namespace Render {
             this.planeY = tofpx(cos * -this._fov)
         }
 
-        //todo, pre-drawn dirctional image
+        // Draw the hidden controller sprite as a 2D directional marker.
         public updateSelfImage() {
             const img = this.sprSelf.image
             img.fill(6)
@@ -479,21 +495,16 @@ namespace Render {
         render() {
             // based on https://lodev.org/cgtutor/raycasting.html
 
-            this.selfXFpx = this.xFpx
-            this.selfYFpx = this.yFpx
+            this.updateRenderFrameState()
 
             let drawStart = 0
             let drawHeight = 0
             let lastDist = -1, lastTexX = -1, lastMapX = -1, lastMapY = -1
-            this.viewZPos = this.spriteMotionZ[this.sprSelf.id].p + (this.sprSelf._height as any as number) - (2<<fpx) + this.cameraOffsetZ_fpx
-            let cameraRangeAngle = Math.atan(this.fov)+.1 //tolerance for spr center just out of camera
-            //debug
-            // const ms=control.millis()
 
             if (this.floorRenderingEnabled)
                 this.renderFloorTiles()
 
-            // ms=control.benchmark(()=>{
+            // Raycast walls and populate the depth buffer used by sprites.
             for (let x = 0; x < SW; x++) {
                 const cameraX: number = one - Math.idiv(((x+this.cameraOffsetX) << fpx) << 1, SW)
                 let rayDirX = this.dirXFpx + (this.planeX * cameraX >> fpx)
@@ -595,19 +606,23 @@ namespace Render {
                     lastMapX = mapX
                     lastMapY = mapY
                 }
-                //fix start&end points to avoid regmatic between lines
+                // Keep adjacent columns aligned despite fractional draw bounds.
                 this.tempScreen.blitRow(x, drawStart, tex, texX, drawHeight)
 
                 this.dist[x] = perpWallDist
             }
-            // })
-            // this.tempScreen.print(ms.toString(), 0, 20)
-
-            //debug
-            // info.setScore(control.millis()-ms)
-            // this.tempScreen.print(lastPerpWallDist.toString(), 0,0,7 )
 
             this.drawSprites()
+        }
+
+        /** Refresh camera-derived values that must remain consistent for one frame. */
+        private updateRenderFrameState() {
+            this.selfXFpx = this.xFpx
+            this.selfYFpx = this.yFpx
+            this.viewZPos = this.spriteMotionZ[this.sprSelf.id].p
+                + (this.sprSelf._height as any as number)
+                - (2 << fpx)
+                + this.cameraOffsetZ_fpx
         }
 
         private renderFloorTiles() {

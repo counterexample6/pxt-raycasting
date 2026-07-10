@@ -73,6 +73,13 @@ To edit this repository in MakeCode.
 * click on **Import** then click on **Import URL**
 * paste **https://github.com/aqeeaqee/pxt-raycasting** and click import
 
+## Development notes
+
+* [`render_raycasting.ts`](render_raycasting.ts) contains the active renderer: FP8 projection math, tilemap integration, wall and floor rendering, and sprite projection.
+* [`render_blocks.ts`](render_blocks.ts) is the public Blocks and TypeScript API layer. Preserve its `blockId` values, help links, and the `Render` namespace for compatibility.
+* [`animation.ts`](animation.ts) provides the animation fixture used by the local test project. The PXT compiler concatenates source files in the order listed in [`pxt.json`](pxt.json), so update that order deliberately when adding a source module.
+* Run `pxt build --local` after code changes. For interactive checks, use the VS Code MakeCode extension’s **Start MakeCode Simulator** action and compare raycasting and tilemap modes.
+
 ## Blocks preview
 
 This image shows the blocks code from the last commit in master.

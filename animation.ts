@@ -1,16 +1,16 @@
-//////////////////////// animation.ts contents of previous version, just for test.ts here for convenience /////////////////////
-// file contents:
-// directional animations defines for enging_raycasting.ts
-// for convenience, constructed animations as below, which images are builtin in Arcade, 
+// Directional-animation fixtures used by the local test project.
+// Each outer array represents a view direction; each inner array contains the
+// frames cycled while that direction is visible.
+// for convenience, constructed animations as below, which images are builtin in Arcade,
 // in order from easy to complex
 
-// each are 2D Image array, Image[][]: 
-// 1st dimension is direction: 
-//    length=1 to any, e.g. 1,2,3,4,...,8,..., engine can automatically arange them to 0~360° 
+// each are 2D Image array, Image[][]:
+// 1st dimension is direction:
+//    length=1 to any, e.g. 1,2,3,4,...,8,..., engine can automatically arange them to 0~360°
 //    order: start from left, then folling with others in CW order
-//    e.g: 
-//         2 directions should be [leftAni,RightAni], 
-//         4-direction should be [leftAni, frontAni, rightAni, backAni], 
+//    e.g:
+//         2 directions should be [leftAni,RightAni],
+//         4-direction should be [leftAni, frontAni, rightAni, backAni],
 //         8-direction=[l,lf,f,fr,r,rb,b,lb], ...
 //    the reason that directions start from left, is almost all Arcade builtin one side images are facing left, so that would be convient for using.
 // 2nd dimension is animation Images
