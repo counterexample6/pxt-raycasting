@@ -1,6 +1,14 @@
 //% shim=pxt::updateScreen
 function updateScreen(img: Image) { }
 
+/**
+ * The active 2.5D renderer.
+ *
+ * World positions and direction vectors use FP8 fixed-point values while the
+ * tilemap stores one tile per integer world unit. Each raycasting frame draws
+ * optional ceiling and floor tiles, DDA wall columns, then scene sprites.
+ * `render_blocks.ts` exposes the supported public API for this implementation.
+ */
 enum ViewMode {
     //% block="TileMap Mode"
     tilemapView,
@@ -11,15 +19,19 @@ enum ViewMode {
 namespace Render {
     const SH = screen.height, SHHalf = SH / 2
     const SW = screen.width, SWHalf = SW / 2
+    // FP8 world/vector scale. Keep all projection calculations in this unit
+    // until the final image-coordinate conversion.
     export const fpx = 8
     const fpx2=fpx*2
     const fpx2_4 = fpx2 - 4
     const fpx_scale = 2 ** fpx
     export function tofpx(n: number) { return (n * fpx_scale) | 0 }
+    // Fixed-point representations of 1.0 and 1.0 squared for DDA math.
     const one = 1 << fpx
     const one2 = 1 << (fpx + fpx)
     const FPX_MAX = (1 << fpx) - 1
 
+    /** Per-sprite vertical state. Values are FP8 pixels and keyed by sprite ID. */
     class MotionSet1D {
         p: number
         v: number = 0
@@ -27,15 +39,75 @@ namespace Render {
         constructor(public offset: number) {
             this.p = offset
         }
+
+        /** Advance one vertical-motion step and clamp movement that passes the offset. */
+        advance(deltaTime: number): boolean {
+            if (this.v == 0 && this.p == this.offset)
+                return false
+
+            this.v += this.a * deltaTime
+            this.p += this.v * deltaTime
+            if ((this.a >= 0 && this.v > 0 && this.p > this.offset) ||
+                (this.a <= 0 && this.v < 0 && this.p < this.offset)) {
+                this.p = this.offset
+                this.v = 0
+            }
+            return true
+        }
     }
 
-    export const defaultFov = SW / SH / 2  //Wall just fill screen height when standing 1 tile away
+    /** Reused result of one wall DDA traversal; avoids allocating once per column. */
+    class WallRayHit {
+        mapX: number
+        mapY: number
+        mapStepX: number
+        mapStepY: number
+        sideWallHit: boolean
+        tileIndex: number
+
+        constructor() {
+            this.mapX = 0
+            this.mapY = 0
+            this.mapStepX = 0
+            this.mapStepY = 0
+            this.sideWallHit = false
+            this.tileIndex = 0
+        }
+    }
+
+    /** Reused draw-bound cache shared by neighboring wall columns. */
+    class WallColumnCache {
+        drawStart: number
+        drawHeight: number
+        lastDist: number
+        lastTexX: number
+        lastMapX: number
+        lastMapY: number
+
+        constructor() {
+            this.drawStart = 0
+            this.drawHeight = 0
+            this.reset()
+        }
+
+        reset() {
+            this.lastDist = -1
+            this.lastTexX = -1
+            this.lastMapX = -1
+            this.lastMapY = -1
+        }
+    }
+
+    // A one-tile-high wall fills the viewport when viewed one tile away.
+    export const defaultFov = SW / SH / 2
 
     export class RayCastingRender{
 
+        // Off-screen 3D frame buffer; copied to the hardware screen each frame.
         private tempScreen: Image = image.create(SW, SH)
         private tempBackground: scene.BackgroundLayer //for "see through" when scene popped out
 
+        // Camera orientation and projection-plane vectors in FP8.
         velocityAngle: number = 2
         velocity: number = 3
         protected _viewMode=ViewMode.raycastingView
@@ -46,12 +118,18 @@ namespace Render {
         protected _angle: number
         protected _fov: number
         protected _wallZScale: number = 1
+        protected _floorRenderingEnabled = true
+        protected _ceilingRenderingEnabled = false
+        // Ceiling-plane height in tile units; separate from the wall multiplier.
+        protected _ceilingHeight = 1
+        // When false, unassigned ceiling material cells leave the sky/background visible.
+        protected _ceilingUsesFloorTiles = false
         cameraSway = 0
         protected isWalking=false
         protected cameraOffsetX = 0
         protected cameraOffsetZ_fpx = 0
 
-        //sprites & accessories
+        // Scene sprites taken over by the 3D renderer and their attached state.
         sprSelf: Sprite
         sprites: Sprite[] = []
         sprites2D: Sprite[] = []
@@ -62,27 +140,32 @@ namespace Render {
         protected sayRederers: sprites.BaseSpriteSayRenderer[] = []
         protected sayEndTimes: number[] = []
 
-        //reference
+        // Cached tilemap data and tileset images used by wall, floor, and ceiling sampling.
         protected tilemapScaleSize = 1 << TileScale.Sixteen
         map: tiles.TileMapData
         mapData:Array<number>
         bg: Image
         textures: Image[]
+        private ceilingTilemap: tiles.TileMapData
+        private ceilingMapData: number[]
+        private ceilingTextures: Image[]
         protected oldRender: scene.Renderable
         protected myRender: scene.Renderable
 
-        //render
+        // Per-frame projection state. `dist` stores wall depth by screen column
+        // so sprite drawing can correctly reject columns behind a wall.
         protected wallHeightInView: number
         protected wallWidthInView: number
         protected dist: number[] = []
-        //render perf const
+        private wallRayHit = new WallRayHit()
+        private wallColumnCache = new WallColumnCache()
         cameraRangeAngle:number
         viewZPos:number
         selfXFpx:number
         selfYFpx:number
 
-        //for drawing sprites
-        protected invDet: number //required for correct matrix multiplication
+        // Reused scratch state for sprite-to-camera transforms and overlays.
+        protected invDet: number
         camera: scene.Camera
         tempSprite: Sprite = sprites.create(img`0`)
         protected transformX: number[] = []
@@ -160,6 +243,69 @@ namespace Render {
             this._wallZScale = v
         }
 
+        /** Wall height in tile units; an alias for the existing wall multiplier. */
+        get wallHeight(): number {
+            return this._wallZScale
+        }
+
+        set wallHeight(height: number) {
+            this._wallZScale = height
+        }
+
+        get floorRenderingEnabled(): boolean {
+            return this._floorRenderingEnabled
+        }
+
+        set floorRenderingEnabled(enabled: boolean) {
+            this._floorRenderingEnabled = enabled
+        }
+
+        get ceilingRenderingEnabled(): boolean {
+            return this._ceilingRenderingEnabled
+        }
+
+        set ceilingRenderingEnabled(enabled: boolean) {
+            this._ceilingRenderingEnabled = enabled
+        }
+
+        /** Height of the horizontal ceiling plane in tile units above the floor. */
+        get ceilingHeight(): number {
+            return this._ceilingHeight
+        }
+
+        set ceilingHeight(height: number) {
+            this._ceilingHeight = Math.max(0, height)
+        }
+
+        get ceilingUsesFloorTiles(): boolean {
+            return this._ceilingUsesFloorTiles
+        }
+
+        set ceilingUsesFloorTiles(enabled: boolean) {
+            this._ceilingUsesFloorTiles = enabled
+        }
+
+        /** Assign a same-sized Tilemap layer whose tiles override ceiling materials. */
+        setCeilingTilemap(tilemap: tiles.TileMapData): boolean {
+            if (!this.isCompatibleCeilingTilemap(tilemap))
+                return false
+
+            this.ceilingTilemap = tilemap
+            this.ceilingMapData = ((tilemap as any).data as Buffer).toArray(NumberFormat.Int8LE)
+            this.ceilingTextures = tilemap.getTileset()
+            return true
+        }
+
+        clearCeilingTilemap() {
+            this.ceilingTilemap = undefined
+            this.ceilingMapData = undefined
+            this.ceilingTextures = undefined
+        }
+
+        hasCeilingTilemap(): boolean {
+            return !!this.ceilingTilemap
+        }
+
         getMotionZ(spr: Sprite, offsetZ: number = 0) {
             let motionZ = this.spriteMotionZ[spr.id]
             if (!motionZ) {
@@ -189,7 +335,7 @@ namespace Render {
             return this.getMotionZ(spr).p / fpx_scale
         }
 
-        //todo, use ZHeight(set from sprite.Height when takeover, then sprite.Height will be replace with width)
+        // Sprite image height represents its vertical size in the 2.5D view.
         isOverlapZ(sprite1: Sprite, sprite2: Sprite): boolean {
             const p1 = this.getMotionZPosition(sprite1)
             const p2 = this.getMotionZPosition(sprite2)
@@ -292,11 +438,9 @@ namespace Render {
         }
 
         tilemapLoaded() {
+            // Cache raw tile IDs and tileset images once per loaded tilemap.
             const sc = game.currentScene()
-            this.map = sc.tileMap.data
-            this.mapData = ((this.map as any).data as Buffer).toArray(NumberFormat.Int8LE)
-            this.tilemapScaleSize = 1 << sc.tileMap.data.scale
-            this.textures = sc.tileMap.data.getTileset()
+            this.refreshTilemap()
             this.oldRender = sc.tileMap.renderable
             this.spriteLikes.removeElement(this.oldRender)
             sc.allSprites.removeElement(this.oldRender)
@@ -417,7 +561,7 @@ namespace Render {
             this.planeY = tofpx(cos * -this._fov)
         }
 
-        //todo, pre-drawn dirctional image
+        // Draw the hidden controller sprite as a 2D directional marker.
         public updateSelfImage() {
             const img = this.sprSelf.image
             img.fill(6)
@@ -452,217 +596,265 @@ namespace Render {
         }
 
         updateMotionZ(spr:Sprite){
-            const dt = game.eventContext().deltaTime
             const motionZ = this.spriteMotionZ[spr.id]
-            //if (!motionZ) continue
-
-            if (motionZ.v != 0 || motionZ.p != motionZ.offset) {
-                motionZ.v += motionZ.a * dt, motionZ.p += motionZ.v * dt
-                //landing
-                if ((motionZ.a >= 0 && motionZ.v > 0 && motionZ.p > motionZ.offset) ||
-                    (motionZ.a <= 0 && motionZ.v < 0 && motionZ.p < motionZ.offset)) { motionZ.p = motionZ.offset, motionZ.v = 0 }
-                if(spr===this.sprSelf)
-                    this.updateViewZPos()
-            }
-
+            if (motionZ.advance(game.eventContext().deltaTime) && spr === this.sprSelf)
+                this.updateViewZPos()
         }
 
         render() {
             // based on https://lodev.org/cgtutor/raycasting.html
 
-            this.selfXFpx = this.xFpx
-            this.selfYFpx = this.yFpx
+            this.updateRenderFrameState()
 
-            let drawStart = 0
-            let drawHeight = 0
-            let lastDist = -1, lastTexX = -1, lastMapX = -1, lastMapY = -1
-            this.viewZPos = this.spriteMotionZ[this.sprSelf.id].p + (this.sprSelf._height as any as number) - (2<<fpx) + this.cameraOffsetZ_fpx
-            let cameraRangeAngle = Math.atan(this.fov)+.1 //tolerance for spr center just out of camera
-            //debug
-            // const ms=control.millis()
+            if (this.ceilingRenderingEnabled)
+                this.renderCeilingTiles()
 
-            let ms:number
-            //floor
-            if (0) {
-                ms = control.benchmark(() => {
-                    const posZ = (SH * this.viewZPos / this.tilemapScaleSize) | 0
-                    for (let yFloor = SHHalf; yFloor < SH; yFloor++) {
-                        const rowDistance = (posZ / (yFloor - SHHalf)) | 0
-                        let floorX = this.selfXFpx * fpx_scale + (rowDistance * (this.dirXFpx + this.planeX))
-                        let floorY = this.selfYFpx * fpx_scale + (rowDistance * (this.dirYFpx + this.planeY))
-                        const floorStepX = -Math.idiv(rowDistance * this.planeX, SWHalf)
-                        const floorStepY = -Math.idiv(rowDistance * this.planeY, SWHalf)
-                        for (let xFloor = 0; xFloor < SW; xFloor++) { //21
-                            const tileType = this.mapData[4 + (floorX >> fpx2) + (floorY >> fpx2) * this.map.width] //this.getTileIndex(floorX,floorY);//this.map.getTile(floorX, floorY)
-                            {
-                                const floorTex = this.textures[tileType]
-                                if (floorTex) {
-                                    const tx = (floorX >> (fpx2_4)) & 0xF //17
-                                    const ty = (floorY >> (fpx2_4)) & 0xF
-                                    const c = floorTex.getPixel(tx, ty)
-                                    this.tempScreen.setPixel(xFloor, yFloor, c)
-                                }
-                            }
-                            floorX += floorStepX
-                            floorY += floorStepY
-                        }
-                    }
-                })
-                this.tempScreen.print(ms.toString(), 0, 10)
-            }
+            if (this.floorRenderingEnabled)
+                this.renderFloorTiles()
 
-            // ms=control.benchmark(()=>{
-            for (let x = 0; x < SW; x++) {
-                const cameraX: number = one - Math.idiv(((x+this.cameraOffsetX) << fpx) << 1, SW)
-                let rayDirX = this.dirXFpx + (this.planeX * cameraX >> fpx)
-                let rayDirY = this.dirYFpx + (this.planeY * cameraX >> fpx)
-
-                // avoid division by zero
-                if (rayDirX == 0) rayDirX = 1
-                if (rayDirY == 0) rayDirY = 1
-
-                let mapX = this.selfXFpx >> fpx
-                let mapY = this.selfYFpx >> fpx
-
-                // length of ray from current position to next x or y-side
-                let sideDistX = 0, sideDistY = 0
-
-                // length of ray from one x or y-side to next x or y-side
-                const deltaDistX = Math.abs(Math.idiv(one2, rayDirX));
-                const deltaDistY = Math.abs(Math.idiv(one2, rayDirY));
-
-                let mapStepX = 0, mapStepY = 0
-
-                let sideWallHit = false;
-
-                //calculate step and initial sideDist
-                if (rayDirX < 0) {
-                    mapStepX = -1;
-                    sideDistX = ((this.selfXFpx - (mapX << fpx)) * deltaDistX) >> fpx;
-                } else {
-                    mapStepX = 1;
-                    sideDistX = (((mapX << fpx) + one - this.selfXFpx) * deltaDistX) >> fpx;
-                }
-                if (rayDirY < 0) {
-                    mapStepY = -1;
-                    sideDistY = ((this.selfYFpx - (mapY << fpx)) * deltaDistY) >> fpx;
-                } else {
-                    mapStepY = 1;
-                    sideDistY = (((mapY << fpx) + one - this.selfYFpx) * deltaDistY) >> fpx;
-                }
-
-                let color = 0
-
-                let isOutsideMap=false
-                while (true) {
-                    //jump to next map square, OR in x-direction, OR in y-direction
-                    if (sideDistX < sideDistY) {
-                        sideDistX += deltaDistX;
-                        mapX += mapStepX;
-                        sideWallHit = false;
-                    } else {
-                        sideDistY += deltaDistY;
-                        mapY += mapStepY;
-                        sideWallHit = true;
-                    }
-
-                    if (this.map.isOutsideMap(mapX, mapY)){
-                        isOutsideMap=true
-                        break
-                    }
-                    if (this.map.isWall(mapX, mapY)){
-                        color = this.mapData [4 + (mapX | 0) + (mapY | 0) * this.map.width]
-                        break; // hit!
-                    }
-                }
-
-                if (isOutsideMap)
-                    continue
-
-                let perpWallDist:number
-                let wallX = 0
-                if (!sideWallHit) {
-                    perpWallDist = Math.idiv(((mapX << fpx) - this.selfXFpx + (1 - mapStepX << fpx - 1)) << fpx, rayDirX)
-                    wallX = this.selfYFpx + (perpWallDist * rayDirY >> fpx);
-                } else {
-                    perpWallDist = Math.idiv(((mapY << fpx) - this.selfYFpx + (1 - mapStepY << fpx - 1)) << fpx, rayDirY)
-                    wallX = this.selfXFpx + (perpWallDist * rayDirX >> fpx);
-                }
-                wallX &= FPX_MAX
-
-                // color = (color - 1) * 2
-                // if (sideWallHit) color++
-
-                const tex = this.textures[color]
-                if (!tex)
-                    continue
-
-                let texX = (wallX * tex.width) >> fpx;
-                // if ((!sideWallHit && rayDirX > 0) || (sideWallHit && rayDirY < 0))
-                //     texX = tex.width - texX - 1;
-
-                if (perpWallDist !== lastDist && (texX !== lastTexX || mapX !== lastMapX || mapY !== lastMapY)) {//neighbor line of tex share same parameters
-                    const lineHeight = (this.wallHeightInView / perpWallDist)
-                    const drawEnd = lineHeight * this.viewZPos / this.tilemapScaleSize / fpx_scale;
-                    drawStart = drawEnd - lineHeight * (this._wallZScale) + 1;
-                    drawHeight = (Math.ceil(drawEnd) - Math.ceil(drawStart) + 1)
-                    drawStart += SHHalf
-                    
-                    lastDist = perpWallDist
-                    lastTexX = texX
-                    lastMapX = mapX
-                    lastMapY = mapY
-                }
-                //fix start&end points to avoid regmatic between lines
-                this.tempScreen.blitRow(x, drawStart, tex, texX, drawHeight)
-
-                this.dist[x] = perpWallDist
-            }
-            // })
-            // this.tempScreen.print(ms.toString(), 0, 20)
-
-            //debug
-            // info.setScore(control.millis()-ms)
-            // this.tempScreen.print(lastPerpWallDist.toString(), 0,0,7 )
+            // Raycast walls and populate the depth buffer used by sprites.
+            this.wallColumnCache.reset()
+            for (let x = 0; x < SW; x++)
+                this.renderWallColumn(x)
 
             this.drawSprites()
         }
-        
-        drawSprites(){
-            //debug
-            // let msSprs=control.millis()
-            /////////////////// sprites ///////////////////
 
-            //for sprite
-            const invDet = one2 / (this.planeX * this.dirYFpx - this.dirXFpx * this.planeY); //required for correct matrix multiplication
+        /** Refresh camera-derived values that must remain consistent for one frame. */
+        private updateRenderFrameState() {
+            this.selfXFpx = this.xFpx
+            this.selfYFpx = this.yFpx
+            this.viewZPos = this.spriteMotionZ[this.sprSelf.id].p
+                + (this.sprSelf._height as any as number)
+                - (2 << fpx)
+                + this.cameraOffsetZ_fpx
+        }
+
+        /** Cast, project, texture, and draw one screen-column wall slice. */
+        private renderWallColumn(x: number) {
+            const cameraX = one - Math.idiv(((x + this.cameraOffsetX) << fpx) << 1, SW)
+            let rayDirX = this.dirXFpx + (this.planeX * cameraX >> fpx)
+            let rayDirY = this.dirYFpx + (this.planeY * cameraX >> fpx)
+
+            // Avoid division by zero during DDA.
+            if (rayDirX == 0) rayDirX = 1
+            if (rayDirY == 0) rayDirY = 1
+            if (!this.raycastWall(rayDirX, rayDirY))
+                return
+
+            const hit = this.wallRayHit
+            let perpWallDist: number
+            let wallX: number
+            if (!hit.sideWallHit) {
+                perpWallDist = Math.idiv(((hit.mapX << fpx) - this.selfXFpx + (1 - hit.mapStepX << fpx - 1)) << fpx, rayDirX)
+                wallX = this.selfYFpx + (perpWallDist * rayDirY >> fpx)
+            } else {
+                perpWallDist = Math.idiv(((hit.mapY << fpx) - this.selfYFpx + (1 - hit.mapStepY << fpx - 1)) << fpx, rayDirY)
+                wallX = this.selfXFpx + (perpWallDist * rayDirX >> fpx)
+            }
+            wallX &= FPX_MAX
+
+            const tex = this.textures[hit.tileIndex]
+            if (!tex)
+                return
+
+            const texX = (wallX * tex.width) >> fpx
+            const cache = this.wallColumnCache
+            if (perpWallDist !== cache.lastDist && (texX !== cache.lastTexX || hit.mapX !== cache.lastMapX || hit.mapY !== cache.lastMapY)) {
+                const lineHeight = this.wallHeightInView / perpWallDist
+                const drawEnd = lineHeight * this.viewZPos / this.tilemapScaleSize / fpx_scale
+                cache.drawStart = drawEnd - lineHeight * this._wallZScale + 1
+                cache.drawHeight = Math.ceil(drawEnd) - Math.ceil(cache.drawStart) + 1
+                cache.drawStart += SHHalf
+                cache.lastDist = perpWallDist
+                cache.lastTexX = texX
+                cache.lastMapX = hit.mapX
+                cache.lastMapY = hit.mapY
+            }
+
+            // Keep adjacent columns aligned despite fractional draw bounds.
+            this.tempScreen.blitRow(x, cache.drawStart, tex, texX, cache.drawHeight)
+            this.dist[x] = perpWallDist
+        }
+
+        /**
+         * Traverse the tilemap with DDA until a wall is found. Returns false for
+         * rays that leave the map; otherwise records the hit in `wallRayHit`.
+         */
+        private raycastWall(rayDirX: number, rayDirY: number): boolean {
+            const hit = this.wallRayHit
+            let mapX = this.selfXFpx >> fpx
+            let mapY = this.selfYFpx >> fpx
+            const deltaDistX = Math.abs(Math.idiv(one2, rayDirX))
+            const deltaDistY = Math.abs(Math.idiv(one2, rayDirY))
+            let sideDistX: number
+            let sideDistY: number
+            let mapStepX: number
+            let mapStepY: number
+            let sideWallHit: boolean
+
+            if (rayDirX < 0) {
+                mapStepX = -1
+                sideDistX = ((this.selfXFpx - (mapX << fpx)) * deltaDistX) >> fpx
+            } else {
+                mapStepX = 1
+                sideDistX = (((mapX << fpx) + one - this.selfXFpx) * deltaDistX) >> fpx
+            }
+            if (rayDirY < 0) {
+                mapStepY = -1
+                sideDistY = ((this.selfYFpx - (mapY << fpx)) * deltaDistY) >> fpx
+            } else {
+                mapStepY = 1
+                sideDistY = (((mapY << fpx) + one - this.selfYFpx) * deltaDistY) >> fpx
+            }
+
+            while (true) {
+                if (sideDistX < sideDistY) {
+                    sideDistX += deltaDistX
+                    mapX += mapStepX
+                    sideWallHit = false
+                } else {
+                    sideDistY += deltaDistY
+                    mapY += mapStepY
+                    sideWallHit = true
+                }
+
+                if (this.map.isOutsideMap(mapX, mapY))
+                    return false
+                if (this.map.isWall(mapX, mapY)) {
+                    hit.mapX = mapX
+                    hit.mapY = mapY
+                    hit.mapStepX = mapStepX
+                    hit.mapStepY = mapStepY
+                    hit.sideWallHit = sideWallHit
+                    hit.tileIndex = this.mapData[4 + mapX + mapY * this.map.width]
+                    return true
+                }
+            }
+        }
+
+        private renderFloorTiles() {
+            const posZ = (SH * this.viewZPos / this.tilemapScaleSize) | 0
+            if (posZ <= 0)
+                return
+
+            for (let yFloor = SHHalf + 1; yFloor < SH; yFloor++) {
+                const rowDistance = (posZ / (yFloor - SHHalf)) | 0
+                const floorStepX = -Math.idiv(rowDistance * this.planeX, SWHalf)
+                const floorStepY = -Math.idiv(rowDistance * this.planeY, SWHalf)
+                let floorX = this.selfXFpx * fpx_scale + (rowDistance * (this.dirXFpx + this.planeX)) + floorStepX * this.cameraOffsetX
+                let floorY = this.selfYFpx * fpx_scale + (rowDistance * (this.dirYFpx + this.planeY)) + floorStepY * this.cameraOffsetX
+
+                for (let xFloor = 0; xFloor < SW; xFloor++) {
+                    const mapX = floorX >> fpx2
+                    const mapY = floorY >> fpx2
+                    if (mapX >= 0 && mapX < this.map.width && mapY >= 0 && mapY < this.map.height) {
+                        const tileType = this.mapData[4 + mapX + mapY * this.map.width]
+                        const floorTex = this.textures[tileType]
+                        if (floorTex) {
+                            const tx = Math.idiv((floorX & (one2 - 1)) * floorTex.width, one2)
+                            const ty = Math.idiv((floorY & (one2 - 1)) * floorTex.height, one2)
+                            this.tempScreen.setPixel(xFloor, yFloor, floorTex.getPixel(tx, ty))
+                        }
+                    }
+                    floorX += floorStepX
+                    floorY += floorStepY
+                }
+            }
+        }
+
+        /** Project tile textures onto the horizontal ceiling plane above the camera. */
+        private renderCeilingTiles() {
+            const ceilingZ = tofpx(this._ceilingHeight * this.tilemapScaleSize) - this.viewZPos
+            const posZ = (SH * ceilingZ / this.tilemapScaleSize) | 0
+            if (posZ <= 0)
+                return
+
+            for (let yCeiling = SHHalf - 1; yCeiling >= 0; yCeiling--) {
+                const rowDistance = (posZ / (SHHalf - yCeiling)) | 0
+                const ceilingStepX = -Math.idiv(rowDistance * this.planeX, SWHalf)
+                const ceilingStepY = -Math.idiv(rowDistance * this.planeY, SWHalf)
+                let ceilingX = this.selfXFpx * fpx_scale + (rowDistance * (this.dirXFpx + this.planeX)) + ceilingStepX * this.cameraOffsetX
+                let ceilingY = this.selfYFpx * fpx_scale + (rowDistance * (this.dirYFpx + this.planeY)) + ceilingStepY * this.cameraOffsetX
+
+                for (let xCeiling = 0; xCeiling < SW; xCeiling++) {
+                    const mapX = ceilingX >> fpx2
+                    const mapY = ceilingY >> fpx2
+                    if (mapX >= 0 && mapX < this.map.width && mapY >= 0 && mapY < this.map.height) {
+                        const tileType = this.mapData[4 + mapX + mapY * this.map.width]
+                        const ceilingTex = this.getCeilingTexture(mapX, mapY, tileType)
+                        if (ceilingTex) {
+                            const tx = Math.idiv((ceilingX & (one2 - 1)) * ceilingTex.width, one2)
+                            const ty = Math.idiv((ceilingY & (one2 - 1)) * ceilingTex.height, one2)
+                            this.tempScreen.setPixel(xCeiling, yCeiling, ceilingTex.getPixel(tx, ty))
+                        }
+                    }
+                    ceilingX += ceilingStepX
+                    ceilingY += ceilingStepY
+                }
+            }
+        }
+
+        /** Refresh world caches and discard an overlay that no longer matches the world map. */
+        refreshTilemap() {
+            this.map = game.currentScene().tileMap.data
+            this.mapData = ((this.map as any).data as Buffer).toArray(NumberFormat.Int8LE)
+            this.tilemapScaleSize = 1 << this.map.scale
+            this.textures = this.map.getTileset()
+            if (this.ceilingTilemap && !this.isCompatibleCeilingTilemap(this.ceilingTilemap))
+                this.clearCeilingTilemap()
+        }
+
+        /** Validate that an overlay addresses the same tile coordinates as the world map. */
+        private isCompatibleCeilingTilemap(tilemap: tiles.TileMapData): boolean {
+            return !!tilemap && !!this.map
+                && tilemap.width == this.map.width
+                && tilemap.height == this.map.height
+                && tilemap.scale == this.map.scale
+        }
+
+        /** Resolve a ceiling material, leaving empty cells transparent unless floor fallback is enabled. */
+        private getCeilingTexture(mapX: number, mapY: number, baseTileType: number): Image {
+            if (this.ceilingMapData) {
+                const ceilingTileType = this.ceilingMapData[4 + mapX + mapY * this.map.width]
+                if (ceilingTileType) {
+                    const ceilingTexture = this.ceilingTextures[ceilingTileType]
+                    if (ceilingTexture)
+                        return ceilingTexture
+                }
+            }
+            return this._ceilingUsesFloorTiles ? this.textures[baseTileType] : undefined
+        }
+
+        /** Store one sprite's camera-space transform and report whether it is in view. */
+        private transformSpriteForCamera(spr: Sprite, invDet: number): boolean {
+            const spriteX = this.sprXFx8(spr) - this.xFpx
+            const spriteY = this.sprYFx8(spr) - this.yFpx
+            this.angleSelfToSpr[spr.id] = Math.atan2(spriteX, spriteY)
+            this.transformX[spr.id] = invDet * (this.dirYFpx * spriteX - this.dirXFpx * spriteY) >> fpx
+            this.transformY[spr.id] = invDet * (-this.planeY * spriteX + this.planeX * spriteY) >> fpx
+            const angleInCamera = Math.atan2(this.transformX[spr.id] * this.fov, this.transformY[spr.id])
+            return angleInCamera > -this.cameraRangeAngle && angleInCamera < this.cameraRangeAngle
+        }
+
+        drawSprites(){
+            // Transform sprites into camera space, then draw far-to-near using
+            // the wall depth buffer produced by `render()`.
+            const invDet = one2 / (this.planeX * this.dirYFpx - this.dirXFpx * this.planeY)
 
             this.sprites
-                .filter((spr, i) => {
-                    const spriteX = this.sprXFx8(spr) - this.xFpx // this.selfXFpx
-                    const spriteY = this.sprYFx8(spr) - this.yFpx // this.selfYFpx
-                    this.angleSelfToSpr[spr.id] = Math.atan2(spriteX, spriteY)
-                    this.transformX[spr.id] = invDet * (this.dirYFpx * spriteX - this.dirXFpx * spriteY) >> fpx;
-                    this.transformY[spr.id] = invDet * (-this.planeY * spriteX + this.planeX * spriteY) >> fpx; //this is actually the depth inside the screen, that what Z is in 3D
-                    const angleInCamera= Math.atan2(this.transformX[spr.id]*this.fov, this.transformY[spr.id])
-                    return angleInCamera > -this.cameraRangeAngle && angleInCamera < this.cameraRangeAngle //(this.transformY[spr.id] > 0
-                }).sort((spr1, spr2) => {   // far to near
+                .filter(spr => this.transformSpriteForCamera(spr, invDet))
+                .sort((spr1, spr2) => {   // far to near
                     return (this.transformY[spr2.id] - this.transformY[spr1.id])
                 }).forEach((spr, index) => {
-                    //debug
-                    // this.tempScreen.print([spr.id,Math.roundWithPrecision(angle[spr.id],3)].join(), 0, index * 10 + 10,9)
                     this.drawSprite(spr, index, this.transformX[spr.id], this.transformY[spr.id], this.angleSelfToSpr[spr.id])
                 })
-
-            //debug
-            // info.setLife(control.millis() - msSprs+1)
-            // this.tempScreen.print([Math.roundWithPrecision(angle0,3)].join(), 20,  0)
-
         }
 
         registerOnSpriteDirectionUpdate(handler: (spr: Sprite, dir: number) => void) {
             this.onSpriteDirectionUpdateHandler = handler
         }
-      
+
         drawSprite(spr: Sprite, index: number, transformX: number, transformY: number, myAngle:number) {
             const spriteScreenX = Math.ceil((SWHalf) * (1 - transformX / transformY))-this.cameraOffsetX;
             const spriteScreenHalfWidth = Math.idiv((spr._width as any as number) / this.tilemapScaleSize / 2 * this.wallWidthInView, transformY)  //origin: (texSpr.width / 2 << fpx) / transformY / this.fov / 3 * 2 * 4
@@ -704,7 +896,7 @@ namespace Render {
             //     character.setCharacterState(spr, character.rule(characterAniDirs[iTexture]))
             //for this.spriteAnimations
             const texSpr = !this.spriteAnimations[spr.id] ? spr.image : this.spriteAnimations[spr.id].getFrameByDir(((Math.atan2(spr._vx as any as number, spr._vy as any as number) - myAngle) / Math.PI / 2 + 2 - .25))
-            
+
             const sprTexRatio = texSpr.width / spriteScreenHalfWidth / 2
                 helpers.imageBlit(
                 this.tempScreen,

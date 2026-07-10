@@ -53,10 +53,10 @@ namespace Render {
     }
 
     /**
- * Create a directional image animations, multi animations will applied to one round dirctions averagely, start from the left. 
+ * Create a directional image animations, multi animations will applied to one round dirctions averagely, start from the left.
  * The reason that directions start from left, is almost all Arcade out-of-box 1 or 2-dirction images are facing left, so that would be convient for using.
  * @param frameInterval the time between changes, eg: 150
- * @param frames1 animation, if this is the first of multi animation it will be used as left, others will 
+ * @param frames1 animation, if this is the first of multi animation it will be used as left, others will
  * @param frames2 optional, used for 2 or more dirctional
  * @param frames3 optional, used for 3 or more dirctional
  * @param frames4 optional, used for 4 or more dirctional
@@ -82,7 +82,7 @@ namespace Render {
     //% group="Instance"
     //% blockId=rcRender_getRCRenderInstance block="raycasting render"
     //% expandableArgumentMode=toggle
-    //% weight=100 
+    //% weight=100
     //% blockHidden=true
     //% hidden=1
     export function getRCRenderInstance(): RayCastingRender {
@@ -105,7 +105,7 @@ namespace Render {
     }
 
     /**
-     * Get the render Sprite, which create automatically, for physical collisions, and holding the view point.(but get/set view direction with dirX/dirY, which not in the Sprite class) 
+     * Get the render Sprite, which create automatically, for physical collisions, and holding the view point.(but get/set view direction with dirX/dirY, which not in the Sprite class)
      * You can consider it as "myself", and operate it like a usual sprite.
      * eg: position, speed, scale, collision, ...
      */
@@ -154,11 +154,164 @@ namespace Render {
     }
 
     /**
+     * Enable or disable projected floor tiles in raycasting view.
+     * @param enabled whether floor tiles should be rendered
+     */
+    //% blockId=rcRender_setFloorRenderingEnabled block="set floor rendering $enabled"
+    //% group="Basic"
+    //% weight=85
+    //% help=github:pxt-raycasting/docs/set-floor-rendering-enabled
+    export function setFloorRenderingEnabled(enabled: boolean) {
+        raycastingRender.floorRenderingEnabled = enabled
+    }
+
+    /**
+     * Check whether projected floor tiles are rendered in raycasting view.
+     */
+    //% blockId=rcRender_isFloorRenderingEnabled block="floor rendering enabled"
+    //% group="Basic"
+    //% weight=84
+    //% help=github:pxt-raycasting/docs/set-floor-rendering-enabled
+    export function isFloorRenderingEnabled(): boolean {
+        return raycastingRender.floorRenderingEnabled
+    }
+
+    /**
+     * Enable or disable projected ceiling-tile rendering in raycasting view.
+     * @param enabled whether ceiling tiles should be rendered
+     */
+    //% blockId=rcRender_setCeilingRenderingEnabled block="set ceiling rendering $enabled"
+    //% group="Basic"
+    //% weight=78
+    //% help=github:pxt-raycasting/docs/set-ceiling-rendering-enabled
+    export function setCeilingRenderingEnabled(enabled: boolean) {
+        raycastingRender.ceilingRenderingEnabled = enabled
+    }
+
+    /**
+     * Check whether projected ceiling tiles are rendered in raycasting view.
+     */
+    //% blockId=rcRender_isCeilingRenderingEnabled block="ceiling rendering enabled"
+    //% group="Basic"
+    //% weight=77
+    //% help=github:pxt-raycasting/docs/set-ceiling-rendering-enabled
+    export function isCeilingRenderingEnabled(): boolean {
+        return raycastingRender.ceilingRenderingEnabled
+    }
+
+    /**
+     * Set the horizontal ceiling plane height above the floor in tile units.
+     * @param height ceiling height in tiles
+     */
+    //% blockId=rcRender_setCeilingHeight block="set ceiling height $height tiles"
+    //% group="Basic"
+    //% weight=76
+    //% height.min=0 height.max=10 height.defl=1
+    //% help=github:pxt-raycasting/docs/set-ceiling-height
+    export function setCeilingHeight(height: number) {
+        raycastingRender.ceilingHeight = Math.max(0, height)
+    }
+
+    /**
+     * Get the horizontal ceiling plane height above the floor in tile units.
+     */
+    //% blockId=rcRender_getCeilingHeight block="ceiling height in tiles"
+    //% group="Basic"
+    //% weight=75
+    //% help=github:pxt-raycasting/docs/set-ceiling-height
+    export function getCeilingHeight(): number {
+        return raycastingRender.ceilingHeight
+    }
+
+    /**
+     * Set wall height as a tile multiplier. This is equivalent to wallZScale.
+     * @param height wall height in tiles
+     */
+    //% blockId=rcRender_setWallHeight block="set wall height $height tiles"
+    //% group="Basic"
+    //% weight=74
+    //% height.min=0 height.max=10 height.defl=1
+    //% help=github:pxt-raycasting/docs/set-wall-height
+    export function setWallHeight(height: number) {
+        raycastingRender.wallHeight = Math.max(0, height)
+    }
+
+    /**
+     * Get wall height as a tile multiplier.
+     */
+    //% blockId=rcRender_getWallHeight block="wall height in tiles"
+    //% group="Basic"
+    //% weight=73
+    //% help=github:pxt-raycasting/docs/set-wall-height
+    export function getWallHeight(): number {
+        return raycastingRender.wallHeight
+    }
+
+    /**
+     * Use a same-sized Tilemap as the per-cell material layer for rendered ceilings.
+     * Empty layer cells continue to use the world tile's texture.
+     * @param ceilingTilemap the Tilemap layer that supplies ceiling materials
+     */
+    //% blockId=rcRender_setCeilingTilemap block="set ceiling tilemap $ceilingTilemap"
+    //% group="Basic"
+    //% weight=72
+    //% ceilingTilemap.shadow=tilemap
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function setCeilingTilemap(ceilingTilemap: tiles.TileMapData) {
+        raycastingRender.setCeilingTilemap(ceilingTilemap)
+    }
+
+    /**
+     * Clear the ceiling material layer and reuse world tile textures for ceilings.
+     */
+    //% blockId=rcRender_clearCeilingTilemap block="clear ceiling tilemap"
+    //% group="Basic"
+    //% weight=71
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function clearCeilingTilemap() {
+        raycastingRender.clearCeilingTilemap()
+    }
+
+    /**
+     * Check whether a compatible ceiling material layer is active.
+     */
+    //% blockId=rcRender_hasCeilingTilemap block="has ceiling tilemap"
+    //% group="Basic"
+    //% weight=70
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
+    export function hasCeilingTilemap(): boolean {
+        return raycastingRender.hasCeilingTilemap()
+    }
+
+    /**
+     * Choose whether unassigned ceiling cells reuse the corresponding world tile texture.
+     * @param enabled true to use floor tiles; false to leave the sky/background visible
+     */
+    //% blockId=rcRender_setCeilingUsesFloorTiles block="set empty ceiling tiles use floor tiles $enabled"
+    //% group="Basic"
+    //% weight=69
+    //% help=github:pxt-raycasting/docs/set-ceiling-uses-floor-tiles
+    export function setCeilingUsesFloorTiles(enabled: boolean) {
+        raycastingRender.ceilingUsesFloorTiles = enabled
+    }
+
+    /**
+     * Check whether unassigned ceiling cells reuse the world tile texture.
+     */
+    //% blockId=rcRender_isCeilingUsingFloorTiles block="empty ceiling tiles use floor tiles"
+    //% group="Basic"
+    //% weight=68
+    //% help=github:pxt-raycasting/docs/set-ceiling-uses-floor-tiles
+    export function isCeilingUsingFloorTiles(): boolean {
+        return raycastingRender.ceilingUsesFloorTiles
+    }
+
+    /**
      * Get render arribute
      * @param viewMode
      */
     //% group="Basic"
-    //% block="get %attribute" 
+    //% block="get %attribute"
     //% blockId=rcRender_getAttribute
     //% weight=83
     //% help=github:pxt-raycasting/docs/get-attribute
@@ -182,7 +335,7 @@ namespace Render {
      * @param viewMode
      */
     //% group="Basic"
-    //% block="set %attribute = %value" 
+    //% block="set %attribute = %value"
     //% blockId=rcRender_setAttribute
     //% weight=82
     //% help=github:pxt-raycasting/docs/set-attribute
@@ -254,8 +407,7 @@ namespace Render {
     //% weight=86
     //% help=github:pxt-raytracing/docs/refresh-tilemap
     export function refreshTilemap(): void {
-        getRCRenderInstance().map = game.currentScene().tileMap.data
-        getRCRenderInstance().mapData = ((getRCRenderInstance().map as any).data as Buffer).toArray(NumberFormat.Int8LE)
+        getRCRenderInstance().refreshTilemap()
     }
 
     /**
@@ -394,7 +546,7 @@ namespace Render {
     }
 
     /**
-     * Control the self sprite using the direction buttons from the controller. 
+     * Control the self sprite using the direction buttons from the controller.
      * To stop controlling self sprite, pass 0 for v and va.
      *
      * @param v The velocity used for forward/backword movement when up/down is pressed, in pixel/s
@@ -420,7 +572,7 @@ namespace Render {
      * Render will call this automatically, but maybe not in time enough.
      * If you saw sprite draw at its tilemap position on screen, call this just after created the sprite.
      */
-    //% blockId=rcRender_takeoverSceneSprites 
+    //% blockId=rcRender_takeoverSceneSprites
     //% block="takeover sprites in scene"
     //% group="Advanced"
     //% weight=49

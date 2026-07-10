@@ -1,14 +1,15 @@
 # set View Mode
 
- * set current view mode to tilemapView or raycastingView 
+ * set current view mode to tilemapView or raycastingView
 
 ```sig
 Render.setViewMode()
 ```
 
 ## ~hint
- * The raycastingView: rendered by raycasting, 3D (or aka 2.5D) 
+ * The raycastingView: rendered by raycasting, 3D (or aka 2.5D)
  * The tilemapView: traditional flat tilemap, 2D
+ * Projected floor tiles render only in raycastingView. They can be enabled or disabled with [set Floor Rendering Enabled](/set-floor-rendering-enabled).
  * By default this render working in raycastingView, and can be switch to tilemapView any time, or switch back to raycastingView any time.
  * Could place inside the [on Event of Button](/reference/controller/button/on-event) block, with Pressed/Released, for switch view mode back and forth.
 ## ~
