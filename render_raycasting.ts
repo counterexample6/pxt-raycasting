@@ -46,6 +46,7 @@ namespace Render {
         protected _angle: number
         protected _fov: number
         protected _wallZScale: number = 1
+        protected _floorRenderingEnabled = true
         cameraSway = 0
         protected isWalking=false
         protected cameraOffsetX = 0
@@ -158,6 +159,14 @@ namespace Render {
         }
         set wallZScale(v: number) {
             this._wallZScale = v
+        }
+
+        get floorRenderingEnabled(): boolean {
+            return this._floorRenderingEnabled
+        }
+
+        set floorRenderingEnabled(enabled: boolean) {
+            this._floorRenderingEnabled = enabled
         }
 
         getMotionZ(spr: Sprite, offsetZ: number = 0) {
@@ -481,35 +490,8 @@ namespace Render {
             //debug
             // const ms=control.millis()
 
-            let ms:number
-            //floor
-            if (0) {
-                ms = control.benchmark(() => {
-                    const posZ = (SH * this.viewZPos / this.tilemapScaleSize) | 0
-                    for (let yFloor = SHHalf; yFloor < SH; yFloor++) {
-                        const rowDistance = (posZ / (yFloor - SHHalf)) | 0
-                        let floorX = this.selfXFpx * fpx_scale + (rowDistance * (this.dirXFpx + this.planeX))
-                        let floorY = this.selfYFpx * fpx_scale + (rowDistance * (this.dirYFpx + this.planeY))
-                        const floorStepX = -Math.idiv(rowDistance * this.planeX, SWHalf)
-                        const floorStepY = -Math.idiv(rowDistance * this.planeY, SWHalf)
-                        for (let xFloor = 0; xFloor < SW; xFloor++) { //21
-                            const tileType = this.mapData[4 + (floorX >> fpx2) + (floorY >> fpx2) * this.map.width] //this.getTileIndex(floorX,floorY);//this.map.getTile(floorX, floorY)
-                            {
-                                const floorTex = this.textures[tileType]
-                                if (floorTex) {
-                                    const tx = (floorX >> (fpx2_4)) & 0xF //17
-                                    const ty = (floorY >> (fpx2_4)) & 0xF
-                                    const c = floorTex.getPixel(tx, ty)
-                                    this.tempScreen.setPixel(xFloor, yFloor, c)
-                                }
-                            }
-                            floorX += floorStepX
-                            floorY += floorStepY
-                        }
-                    }
-                })
-                this.tempScreen.print(ms.toString(), 0, 10)
-            }
+            if (this.floorRenderingEnabled)
+                this.renderFloorTiles()
 
             // ms=control.benchmark(()=>{
             for (let x = 0; x < SW; x++) {
@@ -607,7 +589,7 @@ namespace Render {
                     drawStart = drawEnd - lineHeight * (this._wallZScale) + 1;
                     drawHeight = (Math.ceil(drawEnd) - Math.ceil(drawStart) + 1)
                     drawStart += SHHalf
-                    
+
                     lastDist = perpWallDist
                     lastTexX = texX
                     lastMapX = mapX
@@ -627,7 +609,37 @@ namespace Render {
 
             this.drawSprites()
         }
-        
+
+        private renderFloorTiles() {
+            const posZ = (SH * this.viewZPos / this.tilemapScaleSize) | 0
+            if (posZ <= 0)
+                return
+
+            for (let yFloor = SHHalf + 1; yFloor < SH; yFloor++) {
+                const rowDistance = (posZ / (yFloor - SHHalf)) | 0
+                const floorStepX = -Math.idiv(rowDistance * this.planeX, SWHalf)
+                const floorStepY = -Math.idiv(rowDistance * this.planeY, SWHalf)
+                let floorX = this.selfXFpx * fpx_scale + (rowDistance * (this.dirXFpx + this.planeX)) + floorStepX * this.cameraOffsetX
+                let floorY = this.selfYFpx * fpx_scale + (rowDistance * (this.dirYFpx + this.planeY)) + floorStepY * this.cameraOffsetX
+
+                for (let xFloor = 0; xFloor < SW; xFloor++) {
+                    const mapX = floorX >> fpx2
+                    const mapY = floorY >> fpx2
+                    if (mapX >= 0 && mapX < this.map.width && mapY >= 0 && mapY < this.map.height) {
+                        const tileType = this.mapData[4 + mapX + mapY * this.map.width]
+                        const floorTex = this.textures[tileType]
+                        if (floorTex) {
+                            const tx = Math.idiv((floorX & (one2 - 1)) * floorTex.width, one2)
+                            const ty = Math.idiv((floorY & (one2 - 1)) * floorTex.height, one2)
+                            this.tempScreen.setPixel(xFloor, yFloor, floorTex.getPixel(tx, ty))
+                        }
+                    }
+                    floorX += floorStepX
+                    floorY += floorStepY
+                }
+            }
+        }
+
         drawSprites(){
             //debug
             // let msSprs=control.millis()
@@ -662,7 +674,7 @@ namespace Render {
         registerOnSpriteDirectionUpdate(handler: (spr: Sprite, dir: number) => void) {
             this.onSpriteDirectionUpdateHandler = handler
         }
-      
+
         drawSprite(spr: Sprite, index: number, transformX: number, transformY: number, myAngle:number) {
             const spriteScreenX = Math.ceil((SWHalf) * (1 - transformX / transformY))-this.cameraOffsetX;
             const spriteScreenHalfWidth = Math.idiv((spr._width as any as number) / this.tilemapScaleSize / 2 * this.wallWidthInView, transformY)  //origin: (texSpr.width / 2 << fpx) / transformY / this.fov / 3 * 2 * 4
@@ -704,7 +716,7 @@ namespace Render {
             //     character.setCharacterState(spr, character.rule(characterAniDirs[iTexture]))
             //for this.spriteAnimations
             const texSpr = !this.spriteAnimations[spr.id] ? spr.image : this.spriteAnimations[spr.id].getFrameByDir(((Math.atan2(spr._vx as any as number, spr._vy as any as number) - myAngle) / Math.PI / 2 + 2 - .25))
-            
+
             const sprTexRatio = texSpr.width / spriteScreenHalfWidth / 2
                 helpers.imageBlit(
                 this.tempScreen,

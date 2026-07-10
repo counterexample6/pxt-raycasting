@@ -1,12 +1,12 @@
 # refresh Tilemap
 
-* Refresh the 3D tilemap
+* Refresh the 3D tilemap, including the tile images used by projected floors.
 
 ```sig
 Render.refreshTilemap()
 ```
 
-Only necessary when the 3D tilemap doesn't update automatically. Some built-in tilemap blocks that edit the 2D tilemap don't update the 3D rendered tilemap.
+Only necessary when the 3D tilemap doesn't update automatically. Some built-in tilemap blocks that edit the 2D tilemap don't update the 3D rendered tilemap. After changing a tile, refresh so both its wall and projected floor image use the updated tilemap data.
 
 ## Example
 

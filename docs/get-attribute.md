@@ -18,7 +18,7 @@ Render.getAttribute()
 
 ## Returns
 
-* value according to specific 
+* value according to specific
 
 ## Example
 

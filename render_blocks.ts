@@ -53,10 +53,10 @@ namespace Render {
     }
 
     /**
- * Create a directional image animations, multi animations will applied to one round dirctions averagely, start from the left. 
+ * Create a directional image animations, multi animations will applied to one round dirctions averagely, start from the left.
  * The reason that directions start from left, is almost all Arcade out-of-box 1 or 2-dirction images are facing left, so that would be convient for using.
  * @param frameInterval the time between changes, eg: 150
- * @param frames1 animation, if this is the first of multi animation it will be used as left, others will 
+ * @param frames1 animation, if this is the first of multi animation it will be used as left, others will
  * @param frames2 optional, used for 2 or more dirctional
  * @param frames3 optional, used for 3 or more dirctional
  * @param frames4 optional, used for 4 or more dirctional
@@ -82,7 +82,7 @@ namespace Render {
     //% group="Instance"
     //% blockId=rcRender_getRCRenderInstance block="raycasting render"
     //% expandableArgumentMode=toggle
-    //% weight=100 
+    //% weight=100
     //% blockHidden=true
     //% hidden=1
     export function getRCRenderInstance(): RayCastingRender {
@@ -105,7 +105,7 @@ namespace Render {
     }
 
     /**
-     * Get the render Sprite, which create automatically, for physical collisions, and holding the view point.(but get/set view direction with dirX/dirY, which not in the Sprite class) 
+     * Get the render Sprite, which create automatically, for physical collisions, and holding the view point.(but get/set view direction with dirX/dirY, which not in the Sprite class)
      * You can consider it as "myself", and operate it like a usual sprite.
      * eg: position, speed, scale, collision, ...
      */
@@ -154,11 +154,34 @@ namespace Render {
     }
 
     /**
+     * Enable or disable projected floor tiles in raycasting view.
+     * @param enabled whether floor tiles should be rendered
+     */
+    //% blockId=rcRender_setFloorRenderingEnabled block="set floor rendering $enabled"
+    //% group="Basic"
+    //% weight=85
+    //% help=github:pxt-raycasting/docs/set-floor-rendering-enabled
+    export function setFloorRenderingEnabled(enabled: boolean) {
+        raycastingRender.floorRenderingEnabled = enabled
+    }
+
+    /**
+     * Check whether projected floor tiles are rendered in raycasting view.
+     */
+    //% blockId=rcRender_isFloorRenderingEnabled block="floor rendering enabled"
+    //% group="Basic"
+    //% weight=84
+    //% help=github:pxt-raycasting/docs/set-floor-rendering-enabled
+    export function isFloorRenderingEnabled(): boolean {
+        return raycastingRender.floorRenderingEnabled
+    }
+
+    /**
      * Get render arribute
      * @param viewMode
      */
     //% group="Basic"
-    //% block="get %attribute" 
+    //% block="get %attribute"
     //% blockId=rcRender_getAttribute
     //% weight=83
     //% help=github:pxt-raycasting/docs/get-attribute
@@ -182,7 +205,7 @@ namespace Render {
      * @param viewMode
      */
     //% group="Basic"
-    //% block="set %attribute = %value" 
+    //% block="set %attribute = %value"
     //% blockId=rcRender_setAttribute
     //% weight=82
     //% help=github:pxt-raycasting/docs/set-attribute
@@ -256,6 +279,7 @@ namespace Render {
     export function refreshTilemap(): void {
         getRCRenderInstance().map = game.currentScene().tileMap.data
         getRCRenderInstance().mapData = ((getRCRenderInstance().map as any).data as Buffer).toArray(NumberFormat.Int8LE)
+        getRCRenderInstance().textures = getRCRenderInstance().map.getTileset()
     }
 
     /**
@@ -394,7 +418,7 @@ namespace Render {
     }
 
     /**
-     * Control the self sprite using the direction buttons from the controller. 
+     * Control the self sprite using the direction buttons from the controller.
      * To stop controlling self sprite, pass 0 for v and va.
      *
      * @param v The velocity used for forward/backword movement when up/down is pressed, in pixel/s
@@ -420,7 +444,7 @@ namespace Render {
      * Render will call this automatically, but maybe not in time enough.
      * If you saw sprite draw at its tilemap position on screen, call this just after created the sprite.
      */
-    //% blockId=rcRender_takeoverSceneSprites 
+    //% blockId=rcRender_takeoverSceneSprites
     //% block="takeover sprites in scene"
     //% group="Advanced"
     //% weight=49

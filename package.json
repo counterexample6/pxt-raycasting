@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "build": "pxt build --local",
+    "serve": "pxt serve --just"
+  },
+  "dependencies": {
+    "pxt-arcade": "^4.1.4"
+  }
+}

@@ -6,6 +6,8 @@
         "device": "*"
     },
     "files": [
+        "tilemap.g.jres",
+        "tilemap.g.ts",
         "README.md",
         "render_raycasting.ts",
         "render_blocks.ts",
@@ -17,6 +19,7 @@
         "docs/toggle-view-mode.md",
         "docs/is-view-mode.md",
         "docs/set-view-mode.md",
+        "docs/set-floor-rendering-enabled.md",
         "docs/get-attribute.md",
         "docs/set-attribute.md",
         "docs/get-default-fov.md",
