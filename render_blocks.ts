@@ -249,12 +249,15 @@ namespace Render {
 
     /**
      * Use a same-sized Tilemap as the per-cell material layer for rendered ceilings.
-     * Empty layer cells continue to use the world tile's texture.
+     * Empty layer cells show the scene background unless floor fallback is enabled.
      * @param ceilingTilemap the Tilemap layer that supplies ceiling materials
      */
-    // Temporarily TypeScript-only while isolating the MakeCode Blocks category issue.
-    // Restore the Block metadata with the Arcade `tiles_tilemap_editor` shadow
-    // after the category has been verified without this TileMapData input.
+    //% blockId=rcRender_setCeilingTilemap block="set ceiling tilemap $ceilingTilemap"
+    //% group="Basic"
+    //% weight=72
+    //% ceilingTilemap.shadow=tiles_tilemap_editor
+    //% duplicateShadowOnDrag
+    //% help=github:pxt-raycasting/docs/set-ceiling-tilemap
     export function setCeilingTilemap(ceilingTilemap: tiles.TileMapData) {
         raycastingRender.setCeilingTilemap(ceilingTilemap)
     }
@@ -400,10 +403,10 @@ namespace Render {
      * Refresh the 3D tilemap after changing the 2D tilemap
      */
     //% blockId=rcRender_refreshTilemap
-    //% block
+    //% block="refresh tilemap"
     //% group="Basic"
     //% weight=86
-    //% help=github:pxt-raytracing/docs/refresh-tilemap
+    //% help=github:pxt-raycasting/docs/refresh-tilemap
     export function refreshTilemap(): void {
         getRCRenderInstance().refreshTilemap()
     }
