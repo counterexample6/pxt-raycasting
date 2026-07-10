@@ -6,8 +6,6 @@
         "device": "*"
     },
     "files": [
-        "tilemap.g.jres",
-        "tilemap.g.ts",
         "README.md",
         "render_raycasting.ts",
         "render_blocks.ts",
